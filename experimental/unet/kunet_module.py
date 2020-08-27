@@ -87,7 +87,27 @@ class KUnetModule(MriModule):
         )
 
     def forward(self, image):
-        return self.unet(image.unsqueeze(1)).squeeze(1)
+        # print("f1", image.shape)
+        image = image.view(image.shape[0], -1, image.shape[2], image.shape[3])
+        # print("f2", image.shape)
+        out_kspace = self.unet(image)
+        # print("f3", out_kspace.shape)
+        out_kspace = out_kspace.view(image.shape[0], -1, image.shape[2], image.shape[3], 2)
+        # print("f4", out_kspace.shape)
+        out_image = fastmri.ifft2c(out_kspace)
+        # print("f5", out_image.shape)
+        
+        # absolute value
+        out_image = fastmri.complex_abs(out_image)
+
+        # print("f6", out_image.shape)
+
+        # apply Root-Sum-of-Squares bc multicoil data
+        image = fastmri.rss(out_image, dim=1)
+        
+        # print("f7", image.shape)
+
+        return image
 
     def training_step(self, batch, batch_idx):
         image, target, _, _, _, _ = batch
@@ -245,8 +265,7 @@ class DataTransform(object):
         else:
             masked_kspace = kspace
 
-        # inverse Fourier transform to get zero filled solution
-        image = masked_kspace #fastmri.ifft2c(masked_kspace)
+        image = masked_kspace
 
         # crop input to correct size
         if target is not None:
@@ -260,12 +279,6 @@ class DataTransform(object):
 
         image = transforms.complex_center_crop(image, crop_size)
 
-        # absolute value
-        image = fastmri.complex_abs(image)
-
-        # apply Root-Sum-of-Squares if multicoil data
-        if self.which_challenge == "multicoil":
-            image = fastmri.rss(image)
 
         # normalize input
         image, mean, std = transforms.normalize_instance(image, eps=1e-11)

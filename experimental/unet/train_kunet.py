@@ -65,7 +65,7 @@ def build_args():
         chans=32,
         num_pool_layers=4,
         drop_prob=0.0,
-        mask_type="random",
+        mask_type="equispaced",
         center_fractions=[0.08],
         accelerations=[4],
         resolution=384,

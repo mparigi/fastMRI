@@ -115,7 +115,7 @@ class AppleModule(MriModule):
             "slice": slice_num,
             "output": output * std + mean,
             "target": target * std + mean,
-            "val_loss": self.loss(output.unsqueeze(1), target.unsqueeze(1), data_range=max_value),
+            "val_loss": self.loss(output.unsqueeze(1), target.unsqueeze(1)),
         }
 
     def test_step(self, batch, batch_idx):

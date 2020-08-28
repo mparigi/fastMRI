@@ -90,15 +90,15 @@ class AppleModule(MriModule):
         return self.unet(image.unsqueeze(1)).squeeze(1)
 
     def training_step(self, batch, batch_idx):
-        image, target, _, _, _, _ = batch
+        image, target, _, _, _, _, max_value = batch
         output = self(image)
-        loss = self.loss(output.unsqueeze(1), target.unsqueeze(1))
+        loss = self.loss(output.unsqueeze(1), target.unsqueeze(1), data_range=max_value)
         logs = {"loss": loss.detach()}
 
         return dict(loss=loss, log=logs)
 
     def validation_step(self, batch, batch_idx):
-        image, target, mean, std, fname, slice_num = batch
+        image, target, mean, std, fname, slice_num, max_value = batch
         output = self(image)
         mean = mean.unsqueeze(1).unsqueeze(2)
         std = std.unsqueeze(1).unsqueeze(2)
@@ -115,7 +115,7 @@ class AppleModule(MriModule):
             "slice": slice_num,
             "output": output * std + mean,
             "target": target * std + mean,
-            "val_loss": self.loss(output.unsqueeze(1), target.unsqueeze(1)),
+            "val_loss": self.loss(output.unsqueeze(1), target.unsqueeze(1), data_range=max_value),
         }
 
     def test_step(self, batch, batch_idx):
@@ -251,8 +251,10 @@ class DataTransform(object):
         # crop input to correct size
         if target is not None:
             crop_size = (target.shape[-2], target.shape[-1])
+            max_value = attrs["max"]
         else:
             crop_size = (attrs["recon_size"][0], attrs["recon_size"][1])
+            max_value = 0.0
 
         # check for FLAIR 203
         if image.shape[-2] < crop_size[1]:
@@ -280,4 +282,4 @@ class DataTransform(object):
         else:
             target = torch.Tensor([0])
 
-        return image, target, mean, std, fname, slice_num
+        return image, target, mean, std, fname, slice_num, max_value

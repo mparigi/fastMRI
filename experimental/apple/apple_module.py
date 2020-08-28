@@ -84,7 +84,7 @@ class AppleModule(MriModule):
             drop_prob=self.drop_prob,
         )
 
-        self.lossfn = fastmri.SSIMLoss()
+        self.loss = fastmri.SSIMLoss()
 
     def forward(self, image):
         return self.unet(image.unsqueeze(1)).squeeze(1)

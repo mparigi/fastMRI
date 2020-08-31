@@ -92,7 +92,7 @@ class AppleModule(MriModule):
     def training_step(self, batch, batch_idx):
         image, target, _, _, _, _, max_value = batch
         output = self(image)
-        target, output = T.center_crop_to_smallest(target, output)
+        target, output = transforms.center_crop_to_smallest(target, output)
         loss = self.loss(output.unsqueeze(1), target.unsqueeze(1), data_range=max_value)
         logs = {"loss": loss.detach()}
 
@@ -104,7 +104,7 @@ class AppleModule(MriModule):
         mean = mean.unsqueeze(1).unsqueeze(2)
         std = std.unsqueeze(1).unsqueeze(2)
 
-        target, output = T.center_crop_to_smallest(target, output)
+        target, output = transforms.center_crop_to_smallest(target, output)
     
         # hash strings to int so pytorch can concat them
         fnumber = torch.zeros(len(fname), dtype=torch.long, device=output.device)

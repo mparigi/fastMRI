@@ -13,6 +13,8 @@ import pytorch_lightning as pl
 import torch
 from torch.nn import functional as F
 
+from math import ceil
+
 import fastmri
 from fastmri import MriModule
 from fastmri.data import transforms
@@ -91,7 +93,7 @@ class KUnetModule(MriModule):
         # print("f1", image.shape)
         _, num_coils, _, _, _ = image.shape
         while image.shape[1] != COMPRESSED_COIL_NUM: # Ratchet Coil Compression
-            image = image.repeat(1, 2, 1, 1, 1)
+            image = image.repeat(1, ceil(COMPRESSED_COIL_NUM / num_coils), 1, 1, 1)
             image = torch.narrow(image, 1, 0, COMPRESSED_COIL_NUM)
         image = torch.cat([image[:, :, :, :, i] for i in [0, 1]], 1)
         # print("f2", image.shape)

@@ -88,30 +88,32 @@ class KUnetModule(MriModule):
 
     def forward(self, image):
         # print("f1", image.shape)
-        image = image.view(image.shape[0], -1, image.shape[2], image.shape[3])
+        _, num_coils, _, _, _ = image.shape
+        image = torch.cat([image[:, :, :, :, i] for i in [0, 1]], 1)
         # print("f2", image.shape)
         out_kspace = self.unet(image)
         # print("f3", out_kspace.shape)
-        out_kspace = out_kspace.view(image.shape[0], -1, image.shape[2], image.shape[3], 2)
+        out_kspace = torch.stack( torch.split(out_kspace, num_coils, dim=1), dim=4)
         # print("f4", out_kspace.shape)
-        out_image = fastmri.ifft2c(out_kspace)
-        # print("f5", out_image.shape)
+        complex_image = fastmri.ifft2c(out_kspace)
+        # print("f5", complex_image.shape)
         
-        # absolute value
-        out_image = fastmri.complex_abs(out_image)
+        # absolute value to get real image
+        real_image = fastmri.complex_abs(complex_image)
 
-        # print("f6", out_image.shape)
+        # print("f6", real_image.shape)
 
         # apply Root-Sum-of-Squares bc multicoil data
-        image = fastmri.rss(out_image, dim=1)
+        out_image = fastmri.rss(real_image, dim=1)
         
-        # print("f7", image.shape)
+        # print("f7", out_image.shape)
 
-        return image
+        return out_image
 
     def training_step(self, batch, batch_idx):
         image, target, _, _, _, _ = batch
         output = self(image)
+        target, output = transforms.center_crop_to_smallest(target, output)
         loss = F.l1_loss(output, target)
         logs = {"loss": loss.detach()}
 
@@ -120,6 +122,7 @@ class KUnetModule(MriModule):
     def validation_step(self, batch, batch_idx):
         image, target, mean, std, fname, slice_num = batch
         output = self(image)
+        target, output = transforms.center_crop_to_smallest(target, output)
         mean = mean.unsqueeze(1).unsqueeze(2)
         std = std.unsqueeze(1).unsqueeze(2)
 

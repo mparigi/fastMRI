@@ -60,8 +60,8 @@ def build_args():
     batch_size = 1 if backend == "ddp" else num_gpus
 
     config = dict(
-        in_chans=40,
-        out_chans=40,
+        in_chans=16,
+        out_chans=16,
         chans=32,
         num_pool_layers=4,
         drop_prob=0.0,

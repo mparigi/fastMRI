@@ -87,13 +87,17 @@ class KUnetModule(MriModule):
         )
 
     def forward(self, image):
+        COMPRESSED_COIL_NUM = 8
         # print("f1", image.shape)
         _, num_coils, _, _, _ = image.shape
+        while image.shape[1] != COMPRESSED_COIL_NUM: # Ratchet Coil Compression
+            image = image.repeat(1, 2, 1, 1, 1)
+            image = torch.narrow(image, 1, 0, COMPRESSED_COIL_NUM)
         image = torch.cat([image[:, :, :, :, i] for i in [0, 1]], 1)
         # print("f2", image.shape)
         out_kspace = self.unet(image)
         # print("f3", out_kspace.shape)
-        out_kspace = torch.stack( torch.split(out_kspace, num_coils, dim=1), dim=4)
+        out_kspace = torch.stack( torch.split(out_kspace, COMPRESSED_COIL_NUM, dim=1), dim=4)
         # print("f4", out_kspace.shape)
         complex_image = fastmri.ifft2c(out_kspace)
         # print("f5", complex_image.shape)

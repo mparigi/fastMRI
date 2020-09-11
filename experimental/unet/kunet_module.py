@@ -89,7 +89,7 @@ class KUnetModule(MriModule):
         )
 
     def forward(self, image):
-        COMPRESSED_COIL_NUM = 8
+        COMPRESSED_COIL_NUM = 20
         # print("f1", image.shape)
         _, num_coils, _, _, _ = image.shape
         while image.shape[1] != COMPRESSED_COIL_NUM: # Ratchet Coil Compression

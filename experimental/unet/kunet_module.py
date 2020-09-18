@@ -91,7 +91,7 @@ class KUnetModule(MriModule):
     def forward(self, in_kspace, mask):
         import matplotlib.pyplot as plt
         import numpy as np
-        COMPRESSED_COIL_NUM = 20
+        COMPRESSED_COIL_NUM = self.in_chans // 2
         _, num_coils, _, _, _ = in_kspace.shape
 
         # Ratchet Coil Compression

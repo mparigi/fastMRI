@@ -88,37 +88,72 @@ class KUnetModule(MriModule):
             drop_prob=self.drop_prob,
         )
 
-    def forward(self, image):
+    def forward(self, in_kspace, mask):
+        import matplotlib.pyplot as plt
+        import numpy as np
         COMPRESSED_COIL_NUM = 20
-        # print("f1", image.shape)
-        _, num_coils, _, _, _ = image.shape
-        while image.shape[1] != COMPRESSED_COIL_NUM: # Ratchet Coil Compression
-            image = image.repeat(1, ceil(COMPRESSED_COIL_NUM / num_coils), 1, 1, 1)
-            image = torch.narrow(image, 1, 0, COMPRESSED_COIL_NUM)
-        image = torch.cat([image[:, :, :, :, i] for i in [0, 1]], 1)
-        # print("f2", image.shape)
-        out_kspace = self.unet(image)
-        # print("f3", out_kspace.shape)
+        _, num_coils, _, _, _ = in_kspace.shape
+
+        # Ratchet Coil Compression
+        in_kspace = in_kspace.repeat(1, ceil(COMPRESSED_COIL_NUM / num_coils), 1, 1, 1)
+        in_kspace = torch.narrow(in_kspace, 1, 0, COMPRESSED_COIL_NUM)
+        assert(in_kspace.shape[1] == COMPRESSED_COIL_NUM)
+
+
+
+
+
+
+
+        # unstack complex dimension
+        in_kspace = torch.cat([in_kspace[:, :, :, :, i] for i in [0, 1]], 1)
+
+
+        # # run through unet
+        unet_output = self.unet(in_kspace)
+
+        # plt.imsave("./tmp/kspace.png", np.abs(out_kspace[0][0].numpy()), cmap='gray')
+        # plt.imsave("./tmp/image.png", np.abs(image[0][0].numpy()), cmap='gray')
+
+
+        # # Data Consistency
+        # dc_mask = mask.type(torch.bool).squeeze()
+        # # for b, collection in enumerate(out_kspace):
+        # #     for c, coil in enumerate(collection):
+        # #         for i in range(coil.shape[0]):
+        # #             for j in range(coil.shape[1]):
+        # #                 out_kspace[b][c][i][j] = image[b][c][i][j] if dc_mask[j] else out_kspace[b][c][i][j]
+                
+        out_kspace = torch.where(mask.type(torch.bool).squeeze(1).permute(0, 1, 3, 2), in_kspace, unet_output)
+
+        # # out_kspace, mean, std = transforms.normalize_instance(out_kspace, eps=1e-11)
+        # # out_kspace = out_kspace.clamp(-6, 6)
+
+
+
+        # plt.imsave("./tmp/consistent.png", np.abs(out_kspace[0][0].numpy()), cmap='gray')
+
+        # # restack complex dimension
         out_kspace = torch.stack( torch.split(out_kspace, COMPRESSED_COIL_NUM, dim=1), dim=4)
-        # print("f4", out_kspace.shape)
+        
+        
+        # IFFT
         complex_image = fastmri.ifft2c(out_kspace)
-        # print("f5", complex_image.shape)
         
         # absolute value to get real image
         real_image = fastmri.complex_abs(complex_image)
 
-        # print("f6", real_image.shape)
-
         # apply Root-Sum-of-Squares bc multicoil data
         out_image = fastmri.rss(real_image, dim=1)
-        
-        # print("f7", out_image.shape)
 
+        # plt.imsave("./tmp/out_image.png", np.abs(out_image[0].numpy()), cmap='gray')
+
+        # assert(False)
         return out_image
 
     def training_step(self, batch, batch_idx):
-        image, target, _, _, _, _ = batch
-        output = self(image)
+        image, target, _, _, _, _, mask = batch
+        output = self(image, mask)
         target, output = transforms.center_crop_to_smallest(target, output)
         loss = F.l1_loss(output, target)
         logs = {"loss": loss.detach()}
@@ -126,8 +161,8 @@ class KUnetModule(MriModule):
         return dict(loss=loss, log=logs)
 
     def validation_step(self, batch, batch_idx):
-        image, target, mean, std, fname, slice_num = batch
-        output = self(image)
+        image, target, mean, std, fname, slice_num, mask = batch
+        output = self(image, mask)
         target, output = transforms.center_crop_to_smallest(target, output)
         mean = mean.unsqueeze(1).unsqueeze(2)
         std = std.unsqueeze(1).unsqueeze(2)
@@ -302,4 +337,4 @@ class DataTransform(object):
         else:
             target = torch.Tensor([0])
 
-        return image, target, mean, std, fname, slice_num
+        return image, target, mean, std, fname, slice_num, mask

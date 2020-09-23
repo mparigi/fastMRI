@@ -111,7 +111,7 @@ class KUnetModule(MriModule):
 
         # # run through unet
         unet_output = self.unet(in_kspace)
-
+        # print("in forward", in_kspace.shape, unet_output.shape)
         # plt.imsave("./tmp/kspace.png", np.abs(out_kspace[0][0].numpy()), cmap='gray')
         # plt.imsave("./tmp/image.png", np.abs(image[0][0].numpy()), cmap='gray')
 
@@ -123,7 +123,7 @@ class KUnetModule(MriModule):
         # #         for i in range(coil.shape[0]):
         # #             for j in range(coil.shape[1]):
         # #                 out_kspace[b][c][i][j] = image[b][c][i][j] if dc_mask[j] else out_kspace[b][c][i][j]
-                
+        # print("mask.shape = ", mask.shape, "in_kspace.shape = ", in_kspace.shape, "unet_output.shape = ", unet_output.shape)        
         out_kspace = torch.where(mask.type(torch.bool).squeeze(1).permute(0, 1, 3, 2), in_kspace, unet_output)
 
         # # out_kspace, mean, std = transforms.normalize_instance(out_kspace, eps=1e-11)
@@ -322,6 +322,10 @@ class DataTransform(object):
             crop_size = (image.shape[-2], image.shape[-2])
 
         image = transforms.complex_center_crop(image, crop_size)
+        # crop the mask too for consistency
+        h_from = (mask.shape[-2] - crop_size[1]) // 2
+        # print("crop size = ", crop_size, "mask.shape = ", mask.shape)
+        mask = mask[..., h_from:(h_from + crop_size[1]), :]
 
 
         # normalize input

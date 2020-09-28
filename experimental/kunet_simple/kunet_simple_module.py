@@ -101,9 +101,9 @@ class KUnetSimpleModule(MriModule):
         # run through unet
         unet_output = self.unet(in_kspace)
 
-        
+        dc_mask = mask.type(torch.bool).view(1, 1, 1, -1)
         # data consistency
-        out_kspace = torch.where(mask.type(torch.bool).squeeze(1).permute(0, 1, 3, 2), in_kspace, unet_output)
+        out_kspace = torch.where(dc_mask, in_kspace, unet_output)
 
         
         # restack complex dimension

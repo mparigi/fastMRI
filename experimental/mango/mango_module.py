@@ -76,24 +76,34 @@ class MangoModule(MriModule):
         self.lr_gamma = lr_gamma
         self.weight_decay = weight_decay
 
-        self.unet1 = Unet(
-            in_chans=self.in_chans,
-            out_chans=self.out_chans,
-            chans=self.chans,
-            num_pool_layers=self.num_pool_layers,
-            drop_prob=self.drop_prob,
-        )
-        self.unet2 = Unet(
-            in_chans=self.in_chans,
-            out_chans=self.out_chans,
-            chans=self.chans,
+        self.unet = Unet(
+            in_chans=1,
+            out_chans=1,
+            chans=self.chans // 2,
             num_pool_layers=self.num_pool_layers,
             drop_prob=self.drop_prob,
         )
 
-    def forward(self, image):
-        unet1_output = self.unet1(image.unsqueeze(1)).squeeze(1)
-        return self.unet2(unet1_output.unsqueeze(1)).squeeze(1)
+        self.iunet = Unet(
+            in_chans=self.in_chans,
+            out_chans=self.out_chans,
+            chans=self.chans // 2,
+            num_pool_layers=self.num_pool_layers,
+            drop_prob=self.drop_prob,
+        )
+
+    def forward(self, images):
+        # images is (batch_size, num_coils, width, height)
+        improved_images = self.iunet(images)
+
+        single_image = fastmri.rss(improved_images, dim=1)
+
+        # normalize input
+        single_image, _, _ = transforms.normalize_instance(single_image, eps=1e-11)
+        single_image = single_image.clamp(-6, 6)
+
+
+        return self.unet(single_image.unsqueeze(1)).squeeze(1)
 
     def training_step(self, batch, batch_idx):
         image, target, _, _, _, _ = batch
@@ -269,21 +279,23 @@ class DataTransform(object):
         # absolute value
         image = fastmri.complex_abs(image)
 
+        images = image # return the many images.
+
         # apply Root-Sum-of-Squares if multicoil data
         if self.which_challenge == "multicoil":
-            image = fastmri.rss(image)
+            single_image = fastmri.rss(image)
 
         # normalize input
-        image, mean, std = transforms.normalize_instance(image, eps=1e-11)
-        image = image.clamp(-6, 6)
+        single_image, mean, std = transforms.normalize_instance(single_image, eps=1e-11)
+        single_image = single_image.clamp(-6, 6)
 
         # normalize target
         if target is not None:
             target = transforms.to_tensor(target)
             target = transforms.center_crop(target, crop_size)
-            target = transforms.normalize(target, mean, std, eps=1e-11)
+            target, _, _ = transforms.normalize_instance(target, eps=1e-11)
             target = target.clamp(-6, 6)
         else:
             target = torch.Tensor([0])
 
-        return image, target, mean, std, fname, slice_num
+        return images, target, mean, std, fname, slice_num

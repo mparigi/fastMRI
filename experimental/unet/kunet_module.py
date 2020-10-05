@@ -88,15 +88,15 @@ class KUnetModule(MriModule):
             drop_prob=self.drop_prob,
         )
 
-    def forward(self, in_kspace, mask):
+    def forward(self, in_kspace, mask, crop_size):
         # import matplotlib.pyplot as plt
         # import numpy as np
         COMPRESSED_COIL_NUM = self.in_chans // 2
         _, num_coils, _, _, _ = in_kspace.shape
 
         # Ratchet Coil Compression
-        in_kspace = in_kspace.repeat(1, ceil(COMPRESSED_COIL_NUM / num_coils), 1, 1, 1)
-        in_kspace = torch.narrow(in_kspace, 1, 0, COMPRESSED_COIL_NUM)
+        # in_kspace = in_kspace.repeat(1, ceil(COMPRESSED_COIL_NUM / num_coils), 1, 1, 1)
+        # in_kspace = torch.narrow(in_kspace, 1, 0, COMPRESSED_COIL_NUM)
         assert(in_kspace.shape[1] == COMPRESSED_COIL_NUM)
 
 
@@ -126,10 +126,6 @@ class KUnetModule(MriModule):
         # print("mask.shape = ", mask.shape, "in_kspace.shape = ", in_kspace.shape, "unet_output.shape = ", unet_output.shape)        
         out_kspace = torch.where(mask.type(torch.bool).squeeze(1).permute(0, 1, 3, 2), in_kspace, unet_output)
 
-        # # out_kspace, mean, std = transforms.normalize_instance(out_kspace, eps=1e-11)
-        # # out_kspace = out_kspace.clamp(-6, 6)
-
-
 
         # plt.imsave("./tmp/consistent.png", np.abs(out_kspace[0][0].numpy()), cmap='gray')
 
@@ -139,21 +135,27 @@ class KUnetModule(MriModule):
         
         # IFFT
         complex_image = fastmri.ifft2c(out_kspace)
+
+        # complex crop
+        complex_image_crop = transforms.complex_center_crop(complex_image, crop_size)
         
         # absolute value to get real image
-        real_image = fastmri.complex_abs(complex_image)
+        real_image = fastmri.complex_abs(complex_image_crop)
 
         # apply Root-Sum-of-Squares bc multicoil data
         out_image = fastmri.rss(real_image, dim=1)
 
         # plt.imsave("./tmp/out_image.png", np.abs(out_image[0].numpy()), cmap='gray')
 
+        out_image_normalized, _, _ = transforms.normalize_instance(out_image, eps=1e-11)
+        out_image_normalized = out_image_normalized.clamp(-6, 6)
+
         # assert(False)
-        return out_image
+        return out_image_normalized
 
     def training_step(self, batch, batch_idx):
-        image, target, _, _, _, _, mask = batch
-        output = self(image, mask)
+        image, target, _, _, _, _, mask, crop_size = batch
+        output = self(image, mask, crop_size)
         target, output = transforms.center_crop_to_smallest(target, output)
         loss = F.l1_loss(output, target)
         logs = {"loss": loss.detach()}
@@ -161,8 +163,8 @@ class KUnetModule(MriModule):
         return dict(loss=loss, log=logs)
 
     def validation_step(self, batch, batch_idx):
-        image, target, mean, std, fname, slice_num, mask = batch
-        output = self(image, mask)
+        image, target, mean, std, fname, slice_num, mask, crop_size = batch
+        output = self(image, mask, crop_size)
         target, output = transforms.center_crop_to_smallest(target, output)
         mean = mean.unsqueeze(1).unsqueeze(2)
         std = std.unsqueeze(1).unsqueeze(2)
@@ -183,8 +185,8 @@ class KUnetModule(MriModule):
         }
 
     def test_step(self, batch, batch_idx):
-        image, _, mean, std, fname, slice_num = batch
-        output = self.forward(image)
+        image, _, mean, std, fname, slice_num, mask, crop_size = batch
+        output = self.forward(image, mask, crop_size)
         mean = mean.unsqueeze(1).unsqueeze(2)
         std = std.unsqueeze(1).unsqueeze(2)
 
@@ -321,24 +323,20 @@ class DataTransform(object):
         if image.shape[-2] < crop_size[1]:
             crop_size = (image.shape[-2], image.shape[-2])
 
-        image = transforms.complex_center_crop(image, crop_size)
-        # crop the mask too for consistency
-        h_from = (mask.shape[-2] - crop_size[1]) // 2
-        # print("crop size = ", crop_size, "mask.shape = ", mask.shape)
-        mask = mask[..., h_from:(h_from + crop_size[1]), :]
+        # image = transforms.complex_center_crop(image, crop_size)
 
 
         # normalize input
-        image, mean, std = transforms.normalize_instance(image, eps=1e-11)
-        image = image.clamp(-6, 6)
+        # image, mean, std = transforms.normalize_instance(image, eps=1e-11)
+        # image = image.clamp(-6, 6)
 
         # normalize target
         if target is not None:
             target = transforms.to_tensor(target)
             target = transforms.center_crop(target, crop_size)
-            target = transforms.normalize(target, mean, std, eps=1e-11)
+            target, mean, std = transforms.normalize_instance(target, eps=1e-11)
             target = target.clamp(-6, 6)
         else:
             target = torch.Tensor([0])
 
-        return image, target, mean, std, fname, slice_num, mask
+        return image, target, mean, std, fname, slice_num, mask, crop_size

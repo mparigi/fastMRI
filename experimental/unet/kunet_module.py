@@ -88,20 +88,17 @@ class KUnetModule(MriModule):
             drop_prob=self.drop_prob,
         )
 
+        self.iunet = Unet(
+            in_chans=self.in_chans // 2,
+            out_chans=self.out_chans // 2,
+            chans=self.chans // 2,
+            num_pool_layers=self.num_pool_layers,
+            drop_prob=self.drop_prob,
+        )
+
     def forward(self, in_kspace, mask, crop_size):
-        # import matplotlib.pyplot as plt
-        # import numpy as np
         COMPRESSED_COIL_NUM = self.in_chans // 2
-        _, num_coils, _, _, _ = in_kspace.shape
-
-        # Ratchet Coil Compression
-        # in_kspace = in_kspace.repeat(1, ceil(COMPRESSED_COIL_NUM / num_coils), 1, 1, 1)
-        # in_kspace = torch.narrow(in_kspace, 1, 0, COMPRESSED_COIL_NUM)
         assert(in_kspace.shape[1] == COMPRESSED_COIL_NUM)
-
-
-
-
 
 
 
@@ -111,27 +108,19 @@ class KUnetModule(MriModule):
 
         # # run through unet
         unet_output = self.unet(in_kspace)
-        # print("in forward", in_kspace.shape, unet_output.shape)
-        # plt.imsave("./tmp/kspace.png", np.abs(out_kspace[0][0].numpy()), cmap='gray')
-        # plt.imsave("./tmp/image.png", np.abs(image[0][0].numpy()), cmap='gray')
 
-
-        # # Data Consistency
+        # Data Consistency
         # dc_mask = mask.type(torch.bool).squeeze()
-        # # for b, collection in enumerate(out_kspace):
-        # #     for c, coil in enumerate(collection):
-        # #         for i in range(coil.shape[0]):
-        # #             for j in range(coil.shape[1]):
-        # #                 out_kspace[b][c][i][j] = image[b][c][i][j] if dc_mask[j] else out_kspace[b][c][i][j]
+        # for b, collection in enumerate(out_kspace):
+        #     for c, coil in enumerate(collection):
+        #         for i in range(coil.shape[0]):
+        #             for j in range(coil.shape[1]):
+        #                 out_kspace[b][c][i][j] = image[b][c][i][j] if dc_mask[j] else out_kspace[b][c][i][j]
         # print("mask.shape = ", mask.shape, "in_kspace.shape = ", in_kspace.shape, "unet_output.shape = ", unet_output.shape)        
         out_kspace = torch.where(mask.type(torch.bool).squeeze(1).permute(0, 1, 3, 2), in_kspace, unet_output)
 
-
-        # plt.imsave("./tmp/consistent.png", np.abs(out_kspace[0][0].numpy()), cmap='gray')
-
         # # restack complex dimension
         out_kspace = torch.stack( torch.split(out_kspace, COMPRESSED_COIL_NUM, dim=1), dim=4)
-        
         
         # IFFT
         complex_image = fastmri.ifft2c(out_kspace)
@@ -142,10 +131,11 @@ class KUnetModule(MriModule):
         # absolute value to get real image
         real_image = fastmri.complex_abs(complex_image_crop)
 
-        # apply Root-Sum-of-Squares bc multicoil data
-        out_image = fastmri.rss(real_image, dim=1)
+        improved_real_image = self.iunet(real_image)
 
-        # plt.imsave("./tmp/out_image.png", np.abs(out_image[0].numpy()), cmap='gray')
+        # apply Root-Sum-of-Squares bc multicoil data
+        out_image = fastmri.rss(improved_real_image, dim=1)
+
 
         out_image_normalized, _, _ = transforms.normalize_instance(out_image, eps=1e-11)
         out_image_normalized = out_image_normalized.clamp(-6, 6)

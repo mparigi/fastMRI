@@ -246,7 +246,7 @@ class DataTransform(object):
             masked_kspace = kspace
 
         # inverse Fourier transform to get zero filled solution
-        image = fastmri.ifft2c(masked_kspace)
+        images = fastmri.ifft2c(masked_kspace)
 
         # crop input to correct size
         if target is not None:
@@ -255,25 +255,33 @@ class DataTransform(object):
             crop_size = (attrs["recon_size"][0], attrs["recon_size"][1])
 
         # check for FLAIR 203
-        if image.shape[-2] < crop_size[1]:
-            crop_size = (image.shape[-2], image.shape[-2])
+        if images.shape[-2] < crop_size[1]:
+            crop_size = (images.shape[-2], images.shape[-2])
 
-        image = transforms.complex_center_crop(image, crop_size)
+        images = transforms.complex_center_crop(images, crop_size)
 
         # absolute value
-        image = fastmri.complex_abs(image)
+        images = fastmri.complex_abs(images)
+
+
+
+        # get normal mean from would be RSS
+        # _im = fastmri.rss(images)
+        # _, mean, std = transforms.normalize_instance(_im, eps=1e-11)
 
         # normalize input
-        image, mean, std = transforms.normalize_instance(image, eps=1e-11)
-        image = image.clamp(-6, 6)
+        # images, mean, std = transforms.normalize_instance(images, eps=1e-11)
+        # images = images.clamp(-6, 6)
 
         # normalize target
         if target is not None:
             target = transforms.to_tensor(target)
-            target = transforms.center_crop(target, crop_size)
-            target = transforms.normalize(target, mean, std, eps=1e-11)
-            target = target.clamp(-6, 6)
+            # target = transforms.center_crop(target, crop_size)
+            # # target = transforms.normalize(target, mean, std, eps=1e-11)
+            # target, mean, std = transforms.normalize_instance(target, eps=1e-11)
+            # target = target.clamp(-6, 6)
         else:
             target = torch.Tensor([0])
 
-        return image, target, mean, std, fname, slice_num
+        # return images, target, mean, std, fname, slice_num
+        return images, target, 0.0, 1.0, fname, slice_num

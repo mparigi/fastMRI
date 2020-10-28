@@ -269,19 +269,21 @@ class DataTransform(object):
         # _im = fastmri.rss(images)
         # _, mean, std = transforms.normalize_instance(_im, eps=1e-11)
 
-        # normalize input
-        # images, mean, std = transforms.normalize_instance(images, eps=1e-11)
-        # images = images.clamp(-6, 6)
 
         # normalize target
         if target is not None:
             target = transforms.to_tensor(target)
-            # target = transforms.center_crop(target, crop_size)
-            # # target = transforms.normalize(target, mean, std, eps=1e-11)
-            # target, mean, std = transforms.normalize_instance(target, eps=1e-11)
-            # target = target.clamp(-6, 6)
+            target = transforms.center_crop(target, crop_size)
+            # target = transforms.normalize(target, mean, std, eps=1e-11)
+            target, mean, std = transforms.normalize_instance(target, eps=1e-11)
+            target = target.clamp(-6, 6)
         else:
             target = torch.Tensor([0])
+            mean, std = 0.0, 1.0
 
+        # normalize input
+        images = transforms.normalize(images, mean, std, eps=1e-11)
+        images = images.clamp(-6, 6)
+        
         # return images, target, mean, std, fname, slice_num
-        return images, target, 0.0, 1.0, fname, slice_num
+        return images, target, mean, std, fname, slice_num

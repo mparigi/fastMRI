@@ -277,13 +277,14 @@ class DataTransform(object):
             # target = transforms.normalize(target, mean, std, eps=1e-11)
             target, mean, std = transforms.normalize_instance(target, eps=1e-11)
             target = target.clamp(-6, 6)
+            # normalize input
+            images = transforms.normalize(images, mean, std, eps=1e-11)
+            images = images.clamp(-6, 6)
         else:
             target = torch.Tensor([0])
-            mean, std = 0.0, 1.0
+            images, mean, std = transforms.normalize_instance(images, eps=1e-11)
+            images = images.clamp(-6, 6)
 
-        # normalize input
-        images = transforms.normalize(images, mean, std, eps=1e-11)
-        images = images.clamp(-6, 6)
         
         # return images, target, mean, std, fname, slice_num
         return images, target, mean, std, fname, slice_num
